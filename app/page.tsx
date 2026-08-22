@@ -14,6 +14,16 @@ type Product = {
   modelNo: string | null;
   description: string | null;
   salePrice: number | null;
+  manufacturer: string | null;
+  origin: string | null;
+  category: string | null;
+  supplierName: string | null;
+  supplierUrl: string | null;
+  supplierProductCode: string | null;
+  weight: number | null;
+  width: number | null;
+  height: number | null;
+  depth: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -29,6 +39,16 @@ type ProductForm = {
   barcode: string;
   modelNo: string;
   description: string;
+  manufacturer: string;
+  origin: string;
+  category: string;
+  supplierName: string;
+  supplierUrl: string;
+  supplierProductCode: string;
+  weight: string;
+  width: string;
+  height: string;
+  depth: string;
 };
 
 const emptyForm: ProductForm = {
@@ -42,6 +62,16 @@ const emptyForm: ProductForm = {
   barcode: "",
   modelNo: "",
   description: "",
+  manufacturer: "",
+  origin: "",
+  category: "",
+  supplierName: "",
+  supplierUrl: "",
+  supplierProductCode: "",
+  weight: "",
+  width: "",
+  height: "",
+  depth: "",
 };
 
 function isNonNegativeInteger(value: string) {
@@ -186,9 +216,19 @@ export default function Home() {
           sku: form.sku.trim() || null,
           salePrice: form.salePrice ? Number(form.salePrice) : null,
           brand: form.brand.trim() || null,
+          manufacturer: form.manufacturer.trim() || null,
+          origin: form.origin.trim() || null,
+          category: form.category.trim() || null,
           barcode: form.barcode.trim() || null,
           modelNo: form.modelNo.trim() || null,
           description: form.description.trim() || null,
+          supplierName: form.supplierName.trim() || null,
+          supplierUrl: form.supplierUrl.trim() || null,
+          supplierProductCode: form.supplierProductCode.trim() || null,
+          weight: form.weight ? Number(form.weight) : null,
+          width: form.width ? Number(form.width) : null,
+          height: form.height ? Number(form.height) : null,
+          depth: form.depth ? Number(form.depth) : null,
         }),
       });
       const data = await response.json();
@@ -232,46 +272,15 @@ export default function Home() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid gap-5 md:grid-cols-2">
-              <label className="space-y-2 md:col-span-2">
-                <span className="text-sm font-medium text-slate-700">
-                  상품명 <span className="text-red-600">*</span>
-                </span>
-                <input
-                  required
-                  value={form.name}
-                  onChange={(event) => updateForm("name", event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-                  placeholder="상품명을 입력하세요"
-                />
-              </label>
-
-              <NumberField
-                label="매입가"
+          <form onSubmit={handleSubmit} className="space-y-8">
+            <FormSection title="기본정보" description="상품을 구분하는 기본 정보를 입력하세요.">
+              <TextField
+                label="상품명"
                 required
-                value={form.costPrice}
-                onChange={(value) => updateForm("costPrice", value)}
+                value={form.name}
+                onChange={(value) => updateForm("name", value)}
+                placeholder="상품명을 입력하세요"
               />
-              <NumberField
-                label="배송비"
-                required
-                value={form.shippingCost}
-                onChange={(value) => updateForm("shippingCost", value)}
-              />
-              <NumberField
-                label="재고"
-                required
-                value={form.stock}
-                onChange={(value) => updateForm("stock", value)}
-                suffix="개"
-              />
-              <NumberField
-                label="판매가"
-                value={form.salePrice}
-                onChange={(value) => updateForm("salePrice", value)}
-              />
-
               <TextField
                 label="SKU"
                 value={form.sku}
@@ -283,26 +292,120 @@ export default function Home() {
                 onChange={(value) => updateForm("brand", value)}
               />
               <TextField
-                label="바코드"
-                value={form.barcode}
-                onChange={(value) => updateForm("barcode", value)}
+                label="제조사"
+                value={form.manufacturer}
+                onChange={(value) => updateForm("manufacturer", value)}
               />
               <TextField
                 label="모델번호"
                 value={form.modelNo}
                 onChange={(value) => updateForm("modelNo", value)}
               />
+              <TextField
+                label="바코드 / GTIN"
+                value={form.barcode}
+                onChange={(value) => updateForm("barcode", value)}
+              />
+              <TextField
+                label="원산지"
+                value={form.origin}
+                onChange={(value) => updateForm("origin", value)}
+              />
+              <TextField
+                label="카테고리"
+                value={form.category}
+                onChange={(value) => updateForm("category", value)}
+              />
+            </FormSection>
 
+            <FormSection title="가격 / 재고" description="금액은 원 단위, 재고는 개 단위입니다.">
+              <NumberField
+                label="매입가"
+                required
+                value={form.costPrice}
+                onChange={(value) => updateForm("costPrice", value)}
+                suffix="원"
+              />
+              <NumberField
+                label="배송비"
+                required
+                value={form.shippingCost}
+                onChange={(value) => updateForm("shippingCost", value)}
+                suffix="원"
+              />
+              <NumberField
+                label="판매가"
+                value={form.salePrice}
+                onChange={(value) => updateForm("salePrice", value)}
+                suffix="원"
+              />
+              <NumberField
+                label="재고"
+                required
+                value={form.stock}
+                onChange={(value) => updateForm("stock", value)}
+                suffix="개"
+              />
+            </FormSection>
+
+            <FormSection title="공급처 정보" description="상품을 공급받는 곳의 정보를 입력하세요.">
+              <TextField
+                label="공급처명"
+                value={form.supplierName}
+                onChange={(value) => updateForm("supplierName", value)}
+              />
+              <TextField
+                label="공급처 URL"
+                type="url"
+                value={form.supplierUrl}
+                onChange={(value) => updateForm("supplierUrl", value)}
+                placeholder="https://"
+              />
+              <TextField
+                label="공급처 상품코드"
+                value={form.supplierProductCode}
+                onChange={(value) => updateForm("supplierProductCode", value)}
+              />
+            </FormSection>
+
+            <FormSection title="물류 정보" description="무게는 g, 크기는 mm 단위입니다.">
+              <NumberField
+                label="무게"
+                value={form.weight}
+                onChange={(value) => updateForm("weight", value)}
+                suffix="g"
+              />
+              <NumberField
+                label="가로"
+                value={form.width}
+                onChange={(value) => updateForm("width", value)}
+                suffix="mm"
+              />
+              <NumberField
+                label="세로"
+                value={form.height}
+                onChange={(value) => updateForm("height", value)}
+                suffix="mm"
+              />
+              <NumberField
+                label="높이"
+                value={form.depth}
+                onChange={(value) => updateForm("depth", value)}
+                suffix="mm"
+              />
+            </FormSection>
+
+            <FormSection title="상품 설명">
               <label className="space-y-2 md:col-span-2">
-                <span className="text-sm font-medium text-slate-700">상품 설명</span>
+                <span className="text-sm font-medium text-slate-700">설명</span>
                 <textarea
                   value={form.description}
                   onChange={(event) => updateForm("description", event.target.value)}
-                  className="min-h-24 w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  className="min-h-28 w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                   placeholder="상품 설명을 입력하세요"
                 />
               </label>
-            </div>
+            </FormSection>
 
             {errorMessage && (
               <p
@@ -345,29 +448,30 @@ export default function Home() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-[850px] w-full text-left text-sm">
+            <table className="min-w-[980px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-5 py-3 font-semibold">ID</th>
                   <th className="px-5 py-3 font-semibold">상품명</th>
                   <th className="px-5 py-3 font-semibold">SKU</th>
+                  <th className="px-5 py-3 font-semibold">브랜드</th>
                   <th className="px-5 py-3 font-semibold">매입가</th>
-                  <th className="px-5 py-3 font-semibold">배송비</th>
                   <th className="px-5 py-3 font-semibold">판매가</th>
                   <th className="px-5 py-3 font-semibold">재고</th>
+                  <th className="px-5 py-3 font-semibold">공급처</th>
                   <th className="px-5 py-3 font-semibold">등록일</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-10 text-center text-slate-500">
+                    <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
                       상품 목록을 불러오는 중입니다.
                     </td>
                   </tr>
                 ) : products.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-10 text-center text-slate-500">
+                    <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
                       등록된 상품이 없습니다.
                     </td>
                   </tr>
@@ -379,10 +483,11 @@ export default function Home() {
                         <span className="block truncate">{product.name}</span>
                       </td>
                       <td className="whitespace-nowrap px-5 py-4">{product.sku ?? "-"}</td>
+                      <td className="whitespace-nowrap px-5 py-4">{product.brand ?? "-"}</td>
                       <td className="whitespace-nowrap px-5 py-4">{formatNumber(product.costPrice)}</td>
-                      <td className="whitespace-nowrap px-5 py-4">{formatNumber(product.shippingCost)}</td>
                       <td className="whitespace-nowrap px-5 py-4">{formatNumber(product.salePrice)}</td>
                       <td className="whitespace-nowrap px-5 py-4">{product.stock.toLocaleString("ko-KR")}개</td>
+                      <td className="whitespace-nowrap px-5 py-4">{product.supplierName ?? "-"}</td>
                       <td className="whitespace-nowrap px-5 py-4 text-slate-500">{formatDate(product.createdAt)}</td>
                     </tr>
                   ))
@@ -403,6 +508,22 @@ type NumberFieldProps = {
   suffix?: string;
   onChange: (value: string) => void;
 };
+
+type FormSectionProps = {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+};
+
+function FormSection({ title, description, children }: FormSectionProps) {
+  return (
+    <fieldset className="border-t border-slate-200 pt-6 first:border-t-0 first:pt-0">
+      <legend className="text-base font-semibold text-slate-950">{title}</legend>
+      {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+      <div className="mt-4 grid gap-5 md:grid-cols-2">{children}</div>
+    </fieldset>
+  );
+}
 
 function NumberField({ label, value, required, suffix, onChange }: NumberFieldProps) {
   return (
@@ -430,17 +551,25 @@ function NumberField({ label, value, required, suffix, onChange }: NumberFieldPr
 type TextFieldProps = {
   label: string;
   value: string;
+  required?: boolean;
+  type?: "text" | "url";
+  placeholder?: string;
   onChange: (value: string) => void;
 };
 
-function TextField({ label, value, onChange }: TextFieldProps) {
+function TextField({ label, value, required, type = "text", placeholder, onChange }: TextFieldProps) {
   return (
     <label className="space-y-2">
-      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <span className="text-sm font-medium text-slate-700">
+        {label} {required && <span className="text-red-600">*</span>}
+      </span>
       <input
+        type={type}
+        required={required}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+        placeholder={placeholder}
       />
     </label>
   );
