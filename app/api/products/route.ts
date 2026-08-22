@@ -11,6 +11,31 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
+function getOptionalNonNegativeInteger(value: unknown): number | null | undefined {
+  if (value === undefined || value === null) {
+    return value;
+  }
+
+  return isNonNegativeInteger(value) ? value : undefined;
+}
+
+function isValidOptionalUrl(value: unknown) {
+  if (value === undefined || value === null) {
+    return true;
+  }
+
+  if (typeof value !== "string" || value.trim() === "") {
+    return true;
+  }
+
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function getOptionalString(value: unknown): string | null | undefined {
   if (value === undefined) {
     return undefined;
@@ -92,6 +117,12 @@ export async function POST(request: Request) {
     ["barcode", "바코드"],
     ["modelNo", "모델번호"],
     ["description", "상품 설명"],
+    ["manufacturer", "제조사"],
+    ["origin", "원산지"],
+    ["category", "카테고리"],
+    ["supplierName", "공급처"],
+    ["supplierUrl", "공급처 URL"],
+    ["supplierProductCode", "공급처 상품코드"],
   ] as const;
 
   for (const [fieldName, displayName] of optionalFields) {
@@ -100,6 +131,31 @@ export async function POST(request: Request) {
     if (value !== undefined && value !== null && typeof value !== "string") {
       return NextResponse.json(
         { error: `${displayName}은(는) 문자열이어야 합니다.` },
+        { status: 400 },
+      );
+    }
+  }
+
+  if (!isValidOptionalUrl(body.supplierUrl)) {
+    return NextResponse.json(
+      { error: "공급처 URL은 올바른 http 또는 https URL이어야 합니다." },
+      { status: 400 },
+    );
+  }
+
+  const dimensionFields = [
+    ["weight", "무게"],
+    ["width", "가로"],
+    ["height", "세로"],
+    ["depth", "깊이"],
+  ] as const;
+
+  for (const [fieldName, displayName] of dimensionFields) {
+    const value = body[fieldName];
+
+    if (value !== undefined && value !== null && !isNonNegativeInteger(value)) {
+      return NextResponse.json(
+        { error: `${displayName}는 비어 있거나 0 이상의 정수여야 합니다.` },
         { status: 400 },
       );
     }
@@ -118,6 +174,16 @@ export async function POST(request: Request) {
         modelNo: getOptionalString(body.modelNo),
         description: getOptionalString(body.description),
         salePrice: body.salePrice === undefined ? null : body.salePrice,
+        manufacturer: getOptionalString(body.manufacturer),
+        origin: getOptionalString(body.origin),
+        category: getOptionalString(body.category),
+        supplierName: getOptionalString(body.supplierName),
+        supplierUrl: getOptionalString(body.supplierUrl),
+        supplierProductCode: getOptionalString(body.supplierProductCode),
+        weight: getOptionalNonNegativeInteger(body.weight),
+        width: getOptionalNonNegativeInteger(body.width),
+        height: getOptionalNonNegativeInteger(body.height),
+        depth: getOptionalNonNegativeInteger(body.depth),
       },
     });
 
