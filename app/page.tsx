@@ -102,6 +102,36 @@ const emptyForm: ProductForm = {
   targetMarginRate: "",
 };
 
+function productToForm(product: Product): ProductForm {
+  return {
+    name: product.name,
+    costPrice: String(product.costPrice),
+    shippingCost: String(product.shippingCost),
+    stock: String(product.stock),
+    sku: product.sku ?? "",
+    salePrice: product.salePrice === null ? "" : String(product.salePrice),
+    brand: product.brand ?? "",
+    barcode: product.barcode ?? "",
+    modelNo: product.modelNo ?? "",
+    description: product.description ?? "",
+    manufacturer: product.manufacturer ?? "",
+    origin: product.origin ?? "",
+    category: product.category ?? "",
+    supplierName: product.supplierName ?? "",
+    supplierUrl: product.supplierUrl ?? "",
+    supplierProductCode: product.supplierProductCode ?? "",
+    weight: product.weight === null ? "" : String(product.weight),
+    width: product.width === null ? "" : String(product.width),
+    height: product.height === null ? "" : String(product.height),
+    depth: product.depth === null ? "" : String(product.depth),
+    autoPricingEnabled: product.autoPricingEnabled,
+    targetMarginRate:
+      product.targetMarginRate === null
+        ? ""
+        : String(product.targetMarginRate),
+  };
+}
+
 function isNonNegativeInteger(value: string) {
   return /^\d+$/.test(value);
 }
@@ -128,6 +158,8 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const [feeSettings, setFeeSettings] = useState<FeeSetting[]>([]);
   const [isFeeLoading, setIsFeeLoading] = useState(true);
   const [isFeeSaving, setIsFeeSaving] = useState(false);
@@ -259,6 +291,38 @@ export default function Home() {
 
   function updateForm(field: keyof ProductForm, value: string) {
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
+  }
+
+  async function handleEdit(productId: number) {
+    setIsLoadingProduct(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    try {
+      const response = await fetch(`/api/products/${productId}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "상품을 불러오지 못했습니다.");
+      }
+
+      setForm(productToForm(data));
+      setEditingProductId(productId);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "상품을 불러오지 못했습니다.",
+      );
+    } finally {
+      setIsLoadingProduct(false);
+    }
+  }
+
+  function handleCancelEdit() {
+    setEditingProductId(null);
+    setForm(emptyForm);
+    setErrorMessage("");
+    setSuccessMessage("");
   }
 
   function validateForm() {
@@ -428,8 +492,12 @@ export default function Home() {
     setIsSaving(true);
 
     try {
-      const response = await fetch("/api/products", {
-        method: "POST",
+      const response = await fetch(
+        editingProductId === null
+          ? "/api/products"
+          : `/api/products/${editingProductId}`,
+        {
+        method: editingProductId === null ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: form.name.trim(),
@@ -461,15 +529,18 @@ export default function Home() {
           height: form.height ? Number(form.height) : null,
           depth: form.depth ? Number(form.depth) : null,
         }),
-      });
+        },
+      );
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error ?? "상품을 등록하지 못했습니다.");
       }
 
+      const wasEditing = editingProductId !== null;
       setForm(emptyForm);
-      setSuccessMessage("상품이 등록되었습니다.");
+      setEditingProductId(null);
+      setSuccessMessage(wasEditing ? "상품이 수정되었습니다." : "상품이 등록되었습니다.");
       await loadProducts();
     } catch (error) {
       setErrorMessage(
@@ -497,9 +568,13 @@ export default function Home() {
 
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
           <div className="mb-6">
-            <h2 className="text-xl font-semibold text-slate-950">상품 등록</h2>
+            <h2 className="text-xl font-semibold text-slate-950">
+              {editingProductId === null ? "상품 등록" : "상품 상세 / 수정"}
+            </h2>
             <p className="mt-1 text-sm text-slate-500">
-              필수 항목을 입력한 후 저장해주세요.
+              {editingProductId === null
+                ? "필수 항목을 입력한 후 저장해주세요."
+                : `상품 ID ${editingProductId}의 정보를 확인하고 수정해주세요.`}
             </p>
           </div>
 
@@ -761,11 +836,24 @@ export default function Home() {
 
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || isLoadingProduct}
               className="w-full rounded-lg bg-blue-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400 sm:w-auto sm:min-w-32"
             >
-              {isSaving ? "저장 중..." : "상품 저장"}
+              {isSaving
+                ? "저장 중..."
+                : editingProductId === null
+                  ? "상품 저장"
+                  : "상품 수정 저장"}
             </button>
+            {editingProductId !== null && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="ml-2 rounded-lg border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                수정 취소
+              </button>
+            )}
           </form>
         </section>
 
@@ -783,7 +871,7 @@ export default function Home() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-[980px] w-full text-left text-sm">
+            <table className="min-w-[1080px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-5 py-3 font-semibold">ID</th>
@@ -795,18 +883,19 @@ export default function Home() {
                   <th className="px-5 py-3 font-semibold">재고</th>
                   <th className="px-5 py-3 font-semibold">공급처</th>
                   <th className="px-5 py-3 font-semibold">등록일</th>
+                  <th className="px-5 py-3 font-semibold">관리</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
+                    <td colSpan={10} className="px-5 py-10 text-center text-slate-500">
                       상품 목록을 불러오는 중입니다.
                     </td>
                   </tr>
                 ) : products.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
+                    <td colSpan={10} className="px-5 py-10 text-center text-slate-500">
                       등록된 상품이 없습니다.
                     </td>
                   </tr>
@@ -824,6 +913,16 @@ export default function Home() {
                       <td className="whitespace-nowrap px-5 py-4">{product.stock.toLocaleString("ko-KR")}개</td>
                       <td className="whitespace-nowrap px-5 py-4">{product.supplierName ?? "-"}</td>
                       <td className="whitespace-nowrap px-5 py-4 text-slate-500">{formatDate(product.createdAt)}</td>
+                      <td className="whitespace-nowrap px-5 py-4">
+                        <button
+                          type="button"
+                          onClick={() => void handleEdit(product.id)}
+                          disabled={isLoadingProduct}
+                          className="rounded-md border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          상세/수정
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
