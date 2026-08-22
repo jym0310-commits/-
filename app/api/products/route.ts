@@ -11,6 +11,18 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
+function isValidMarginRate(value: unknown): value is number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return false;
+  }
+
+  return (
+    value >= 0 &&
+    value < 100 &&
+    Math.abs(value * 100 - Math.round(value * 100)) < 1e-9
+  );
+}
+
 function getOptionalNonNegativeInteger(value: unknown): number | null | undefined {
   if (value === undefined || value === null) {
     return value;
@@ -111,6 +123,27 @@ export async function POST(request: Request) {
     );
   }
 
+  if (
+    body.autoPricingEnabled !== undefined &&
+    typeof body.autoPricingEnabled !== "boolean"
+  ) {
+    return NextResponse.json(
+      { error: "자동 판매가 계산 여부는 true 또는 false여야 합니다." },
+      { status: 400 },
+    );
+  }
+
+  if (
+    body.targetMarginRate !== undefined &&
+    body.targetMarginRate !== null &&
+    !isValidMarginRate(body.targetMarginRate)
+  ) {
+    return NextResponse.json(
+      { error: "목표 마진율은 0 이상 100 미만의 숫자여야 합니다." },
+      { status: 400 },
+    );
+  }
+
   const optionalFields = [
     ["sku", "SKU"],
     ["brand", "브랜드"],
@@ -174,6 +207,10 @@ export async function POST(request: Request) {
         modelNo: getOptionalString(body.modelNo),
         description: getOptionalString(body.description),
         salePrice: body.salePrice === undefined ? null : body.salePrice,
+        autoPricingEnabled:
+          body.autoPricingEnabled === undefined ? false : body.autoPricingEnabled,
+        targetMarginRate:
+          body.targetMarginRate === undefined ? null : body.targetMarginRate,
         manufacturer: getOptionalString(body.manufacturer),
         origin: getOptionalString(body.origin),
         category: getOptionalString(body.category),

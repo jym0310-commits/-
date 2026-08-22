@@ -1,6 +1,28 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import {
+  calculateMarketplaceProfitability,
+  PricingResult,
+} from "@/lib/pricing/calculator";
+
+const marketplaces = [
+  { code: "COUPANG", label: "쿠팡" },
+  { code: "NAVER", label: "네이버" },
+  { code: "ELEVENST", label: "11번가" },
+  { code: "GMARKET", label: "G마켓" },
+  { code: "AUCTION", label: "옥션" },
+] as const;
+
+type MarketplaceCode = (typeof marketplaces)[number]["code"];
+
+type FeeSetting = {
+  id: number;
+  marketplace: MarketplaceCode;
+  feeRate: string | number;
+  additionalCost: number;
+  enabled: boolean;
+};
 
 type Product = {
   id: number;
@@ -26,6 +48,8 @@ type Product = {
   depth: number | null;
   createdAt: string;
   updatedAt: string;
+  autoPricingEnabled: boolean;
+  targetMarginRate: string | number | null;
 };
 
 type ProductForm = {
@@ -49,6 +73,8 @@ type ProductForm = {
   width: string;
   height: string;
   depth: string;
+  autoPricingEnabled: boolean;
+  targetMarginRate: string;
 };
 
 const emptyForm: ProductForm = {
@@ -72,6 +98,8 @@ const emptyForm: ProductForm = {
   width: "",
   height: "",
   depth: "",
+  autoPricingEnabled: false,
+  targetMarginRate: "",
 };
 
 function isNonNegativeInteger(value: string) {
@@ -100,6 +128,10 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [feeSettings, setFeeSettings] = useState<FeeSetting[]>([]);
+  const [isFeeLoading, setIsFeeLoading] = useState(true);
+  const [isFeeSaving, setIsFeeSaving] = useState(false);
+  const [feeErrorMessage, setFeeErrorMessage] = useState("");
 
   async function loadProducts() {
     setIsLoading(true);
@@ -122,6 +154,30 @@ export default function Home() {
       );
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function loadFeeSettings() {
+    setIsFeeLoading(true);
+
+    try {
+      const response = await fetch("/api/marketplace-fees");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "마켓 수수료 설정을 불러오지 못했습니다.");
+      }
+
+      setFeeSettings(data);
+      setFeeErrorMessage("");
+    } catch (error) {
+      setFeeErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "마켓 수수료 설정을 불러오지 못했습니다.",
+      );
+    } finally {
+      setIsFeeLoading(false);
     }
   }
 
@@ -163,6 +219,44 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function fetchInitialFeeSettings() {
+      try {
+        const response = await fetch("/api/marketplace-fees");
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error ?? "마켓 수수료 설정을 불러오지 못했습니다.");
+        }
+
+        if (!isCancelled) {
+          setFeeSettings(data);
+          setFeeErrorMessage("");
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setFeeErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "마켓 수수료 설정을 불러오지 못했습니다.",
+          );
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsFeeLoading(false);
+        }
+      }
+    }
+
+    void fetchInitialFeeSettings();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
   function updateForm(field: keyof ProductForm, value: string) {
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
   }
@@ -188,7 +282,136 @@ export default function Home() {
       return "판매가는 0 이상의 정수로 입력해주세요.";
     }
 
+    if (
+      form.autoPricingEnabled &&
+      (!form.targetMarginRate ||
+        !/^\d+(\.\d{1,2})?$/.test(form.targetMarginRate) ||
+        Number(form.targetMarginRate) >= 100)
+    ) {
+      return "자동계산 시 목표 마진율을 0 이상 100 미만으로 입력해주세요.";
+    }
+
     return "";
+  }
+
+  function getFeeSetting(marketplace: MarketplaceCode) {
+    return feeSettings.find((setting) => setting.marketplace === marketplace);
+  }
+
+  function getPricingResult(setting: FeeSetting): PricingResult | null {
+    const costPrice = Number(form.costPrice);
+    const shippingCost = Number(form.shippingCost);
+
+    if (
+      !isNonNegativeInteger(form.costPrice) ||
+      !isNonNegativeInteger(form.shippingCost)
+    ) {
+      return null;
+    }
+
+    const targetMarginRate = form.targetMarginRate
+      ? Number(form.targetMarginRate)
+      : 0;
+    const feeRate = Number(setting.feeRate);
+
+    return calculateMarketplaceProfitability({
+      costPrice,
+      shippingCost,
+      additionalCost: setting.additionalCost,
+      feeRate,
+      targetMarginRate,
+      salePrice: form.salePrice ? Number(form.salePrice) : null,
+      autoPricingEnabled: form.autoPricingEnabled,
+    });
+  }
+
+  function getRecommendedSalePrice() {
+    const minimumPrices = feeSettings
+      .filter((setting) => setting.enabled)
+      .map((setting) => getPricingResult(setting)?.minimumSalePrice)
+      .filter((price): price is number => price !== null && price !== undefined);
+
+    return minimumPrices.length > 0 ? Math.max(...minimumPrices) : null;
+  }
+
+  function updateFeeSetting(
+    marketplace: MarketplaceCode,
+    field: "feeRate" | "additionalCost" | "enabled",
+    value: string | boolean,
+  ) {
+    setFeeSettings((currentSettings) => {
+      const existingSetting = currentSettings.find(
+        (setting) => setting.marketplace === marketplace,
+      );
+
+      if (!existingSetting) {
+        const newSetting: FeeSetting = {
+          id: 0,
+          marketplace,
+          feeRate: "",
+          additionalCost: 0,
+          enabled: false,
+        };
+
+        if (field === "feeRate") {
+          newSetting.feeRate = String(value);
+        } else if (field === "additionalCost") {
+          newSetting.additionalCost = Number(value);
+        } else {
+          newSetting.enabled = Boolean(value);
+        }
+
+        return [
+          ...currentSettings,
+          newSetting,
+        ];
+      }
+
+      return currentSettings.map((setting) =>
+        setting.marketplace === marketplace
+          ? { ...setting, [field]: value }
+          : setting,
+      );
+    });
+  }
+
+  async function handleSaveFeeSettings() {
+    setIsFeeSaving(true);
+    setFeeErrorMessage("");
+
+    try {
+      const settingsToSave = feeSettings.filter(
+        (setting) => String(setting.feeRate).trim() !== "",
+      );
+
+      await Promise.all(
+        settingsToSave.map(async (setting) => {
+          const response = await fetch("/api/marketplace-fees", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              marketplace: setting.marketplace,
+              feeRate: Number(setting.feeRate),
+              additionalCost: Number(setting.additionalCost),
+              enabled: setting.enabled,
+            }),
+          });
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.error ?? "수수료 설정을 저장하지 못했습니다.");
+          }
+        }),
+      );
+
+      await loadFeeSettings();
+    } catch (error) {
+      setFeeErrorMessage(
+        error instanceof Error ? error.message : "수수료 설정을 저장하지 못했습니다.",
+      );
+    } finally {
+      setIsFeeSaving(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -214,7 +437,15 @@ export default function Home() {
           shippingCost: Number(form.shippingCost),
           stock: Number(form.stock),
           sku: form.sku.trim() || null,
-          salePrice: form.salePrice ? Number(form.salePrice) : null,
+          salePrice: form.autoPricingEnabled
+            ? getRecommendedSalePrice()
+            : form.salePrice
+              ? Number(form.salePrice)
+              : null,
+          autoPricingEnabled: form.autoPricingEnabled,
+          targetMarginRate: form.targetMarginRate
+            ? Number(form.targetMarginRate)
+            : null,
           brand: form.brand.trim() || null,
           manufacturer: form.manufacturer.trim() || null,
           origin: form.origin.trim() || null,
@@ -319,6 +550,35 @@ export default function Home() {
             </FormSection>
 
             <FormSection title="가격 / 재고" description="금액은 원 단위, 재고는 개 단위입니다.">
+              <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={form.autoPricingEnabled}
+                  onChange={(event) =>
+                    setForm((currentForm) => ({
+                      ...currentForm,
+                      autoPricingEnabled: event.target.checked,
+                    }))
+                  }
+                  className="h-4 w-4 accent-blue-700"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-slate-800">
+                    판매가 자동계산
+                  </span>
+                  <span className="block text-xs text-slate-500">
+                    {form.autoPricingEnabled
+                      ? "활성화된 마켓의 최저 판매가를 기준으로 계산합니다."
+                      : "판매가를 직접 입력합니다."}
+                  </span>
+                </span>
+              </label>
+              <NumberField
+                label="목표 마진율"
+                value={form.targetMarginRate}
+                onChange={(value) => updateForm("targetMarginRate", value)}
+                suffix="%"
+              />
               <NumberField
                 label="매입가"
                 required
@@ -346,6 +606,81 @@ export default function Home() {
                 onChange={(value) => updateForm("stock", value)}
                 suffix="개"
               />
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 md:col-span-2">
+                <span className="block text-xs font-medium text-blue-700">추천 판매가</span>
+                <strong className="mt-1 block text-xl text-blue-950">
+                  {formatNumber(getRecommendedSalePrice())}
+                </strong>
+                <span className="mt-1 block text-xs text-blue-700">
+                  활성화된 마켓 중 가장 높은 최저 판매가를 사용합니다.
+                </span>
+              </div>
+              <div className="md:col-span-2">
+                <h3 className="text-base font-semibold text-slate-950">마켓별 수익성</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  현재 수수료 설정을 기준으로 계산한 예상값입니다.
+                </p>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-[900px] w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-xs text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">마켓</th>
+                        <th className="px-4 py-3 font-semibold">수수료율</th>
+                        <th className="px-4 py-3 font-semibold">추가비용</th>
+                        <th className="px-4 py-3 font-semibold">최저 판매가</th>
+                        <th className="px-4 py-3 font-semibold">현재/추천 판매가</th>
+                        <th className="px-4 py-3 font-semibold">예상 수수료</th>
+                        <th className="px-4 py-3 font-semibold">예상 순이익</th>
+                        <th className="px-4 py-3 font-semibold">마진율</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {marketplaces.map((marketplace) => {
+                        const setting = getFeeSetting(marketplace.code);
+                        const result = setting ? getPricingResult(setting) : null;
+                        const usedSalePrice = result?.salePrice ?? null;
+                        const estimatedFee =
+                          usedSalePrice !== null && setting
+                            ? Math.round(usedSalePrice * (Number(setting.feeRate) / 100))
+                            : null;
+
+                        return (
+                          <tr key={marketplace.code}>
+                            <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-900">
+                              {marketplace.label}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              {setting ? `${setting.feeRate}%` : "미설정"}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              {setting ? formatNumber(setting.additionalCost) : "-"}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              {!setting ? "-" : !setting.enabled ? "사용 안 함" : formatNumber(result?.minimumSalePrice ?? null)}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              {!setting ? "-" : !setting.enabled ? "사용 안 함" : formatNumber(usedSalePrice)}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              {!setting || !setting.enabled ? "-" : formatNumber(estimatedFee)}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              {!setting || !setting.enabled ? "-" : formatNumber(result?.netProfit ?? null)}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              {!setting || !setting.enabled
+                                ? "-"
+                                : result?.marginRate === null || result?.marginRate === undefined
+                                  ? "계산 불가"
+                                  : `${result.marginRate.toFixed(2)}%`}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </FormSection>
 
             <FormSection title="공급처 정보" description="상품을 공급받는 곳의 정보를 입력하세요.">
@@ -495,6 +830,103 @@ export default function Home() {
               </tbody>
             </table>
           </div>
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <div className="mb-5">
+            <h2 className="text-xl font-semibold text-slate-950">마켓 수수료 설정</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              수익성 계산에 사용할 마켓별 수수료와 추가비용을 입력하세요.
+            </p>
+            <p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              현재 저장된 수수료율은 테스트용 입력값일 수 있습니다. 공식 수수료율로 간주하지 말고 실제 마켓 정책을 확인해주세요.
+            </p>
+          </div>
+
+          {feeErrorMessage && (
+            <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+              {feeErrorMessage}
+            </p>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="min-w-[680px] w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">마켓</th>
+                  <th className="px-4 py-3 font-semibold">활성화</th>
+                  <th className="px-4 py-3 font-semibold">수수료율 (%)</th>
+                  <th className="px-4 py-3 font-semibold">추가비용 (원)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {isFeeLoading ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
+                      수수료 설정을 불러오는 중입니다.
+                    </td>
+                  </tr>
+                ) : (
+                  marketplaces.map((marketplace) => {
+                    const setting = getFeeSetting(marketplace.code);
+
+                    return (
+                      <tr key={marketplace.code}>
+                        <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-900">
+                          {marketplace.label}
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={setting?.enabled ?? false}
+                            onChange={(event) =>
+                              updateFeeSetting(marketplace.code, "enabled", event.target.checked)
+                            }
+                            className="h-4 w-4 accent-blue-700"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            max="99.99"
+                            step="0.01"
+                            value={setting?.feeRate ?? ""}
+                            onChange={(event) =>
+                              updateFeeSetting(marketplace.code, "feeRate", event.target.value)
+                            }
+                            className="w-32 rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                            placeholder="예: 10.50"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={setting?.additionalCost ?? 0}
+                            onChange={(event) =>
+                              updateFeeSetting(marketplace.code, "additionalCost", event.target.value)
+                            }
+                            className="w-32 rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveFeeSettings}
+            disabled={isFeeSaving || isFeeLoading}
+            className="mt-5 w-full rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400 sm:w-auto"
+          >
+            {isFeeSaving ? "수수료 저장 중..." : "수수료 설정 저장"}
+          </button>
         </section>
       </div>
     </main>

@@ -7,6 +7,14 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Marketplace {
+  COUPANG
+  NAVER
+  ELEVENST
+  GMARKET
+  AUCTION
+}
+
 model Product {
   id           Int      @id @default(autoincrement())
   name         String
@@ -32,6 +40,9 @@ model Product {
   height              Int?
   depth               Int?
 
+  autoPricingEnabled Boolean  @default(false)
+  targetMarginRate   Decimal? @db.Decimal(5, 2)
+
   images       ProductImage[]
 
   createdAt    DateTime @default(now())
@@ -48,4 +59,14 @@ model ProductImage {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId, sortOrder])
+}
+
+model MarketplaceFeeSetting {
+  id             Int         @id @default(autoincrement())
+  marketplace    Marketplace @unique
+  feeRate        Decimal     @db.Decimal(5, 2)
+  additionalCost Int         @default(0)
+  enabled        Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 }
