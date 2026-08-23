@@ -1,14 +1,16 @@
 import {
   createCoupangAuthorization,
-  getCoupangCredentials,
+  getCoupangApiCredentials,
 } from "@/lib/coupang/auth";
+import { isCoupangRequestAllowed } from "@/lib/coupang/validation";
 
 const COUPANG_API_BASE_URL = "https://api-gateway.coupang.com";
 
 type CoupangRequestOptions = {
-  method: "GET";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   query?: string;
+  body?: unknown;
 };
 
 export class CoupangApiError extends Error {
@@ -21,12 +23,26 @@ export class CoupangApiError extends Error {
   }
 }
 
+export class CoupangLiveDisabledError extends Error {
+  readonly code = "COUPANG_LIVE_DISABLED";
+
+  constructor() {
+    super("실제 쿠팡 쓰기 요청이 비활성화되어 있습니다.");
+    this.name = "CoupangLiveDisabledError";
+  }
+}
+
 export async function requestCoupang<T>({
   method,
   path,
   query = "",
+  body,
 }: CoupangRequestOptions): Promise<T> {
-  const credentials = getCoupangCredentials();
+  if (!isCoupangRequestAllowed(method)) {
+    throw new CoupangLiveDisabledError();
+  }
+
+  const credentials = getCoupangApiCredentials();
   const authorization = createCoupangAuthorization(
     method,
     path,
@@ -41,6 +57,7 @@ export async function requestCoupang<T>({
       Authorization: authorization,
       "Content-Type": "application/json;charset=UTF-8",
     },
+    body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
   });
 

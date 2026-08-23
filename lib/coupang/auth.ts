@@ -1,8 +1,11 @@
 import { createHmac } from "node:crypto";
 
-export type CoupangCredentials = {
+export type CoupangApiCredentials = {
   accessKey: string;
   secretKey: string;
+};
+
+export type CoupangCredentials = CoupangApiCredentials & {
   vendorId: string;
 };
 
@@ -18,25 +21,42 @@ function getSignedDate() {
   return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
 }
 
-export function getCoupangCredentials(): CoupangCredentials {
+export function getCoupangApiCredentials(): CoupangApiCredentials {
   const accessKey = process.env.COUPANG_ACCESS_KEY;
   const secretKey = process.env.COUPANG_SECRET_KEY;
-  const vendorId = process.env.COUPANG_VENDOR_ID;
 
-  if (!accessKey || !secretKey || !vendorId) {
+  if (!accessKey || !secretKey) {
     throw new Error(
-      "COUPANG_ACCESS_KEY, COUPANG_SECRET_KEY, COUPANG_VENDOR_ID 환경 변수를 모두 설정해주세요.",
+      "COUPANG_ACCESS_KEY, COUPANG_SECRET_KEY 환경 변수를 모두 설정해주세요.",
     );
   }
 
-  return { accessKey, secretKey, vendorId };
+  return { accessKey, secretKey };
+}
+
+export function hasCoupangApiCredentials() {
+  return Boolean(
+    process.env.COUPANG_ACCESS_KEY?.trim() &&
+      process.env.COUPANG_SECRET_KEY?.trim(),
+  );
+}
+
+export function getCoupangCredentials(): CoupangCredentials {
+  const apiCredentials = getCoupangApiCredentials();
+  const vendorId = process.env.COUPANG_VENDOR_ID;
+
+  if (!vendorId) {
+    throw new Error("COUPANG_VENDOR_ID 환경 변수를 설정해주세요.");
+  }
+
+  return { ...apiCredentials, vendorId };
 }
 
 export function createCoupangAuthorization(
   method: string,
   path: string,
   query: string,
-  credentials: CoupangCredentials,
+  credentials: CoupangApiCredentials,
 ) {
   const signedDate = getSignedDate();
   const message = `${signedDate}${method.toUpperCase()}${path}${query}`;

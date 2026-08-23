@@ -26,6 +26,15 @@ export async function GET(_request: Request, context: RouteContext) {
   try {
     const product = await prisma.product.findUnique({
       where: { id: productId },
+      include: {
+        coupangSetting: true,
+        marketplaceProducts: {
+          where: { marketplace: "COUPANG" },
+        },
+        images: {
+          orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+        },
+      },
     });
 
     if (!product) {

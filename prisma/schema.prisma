@@ -16,18 +16,18 @@ enum Marketplace {
 }
 
 model Product {
-  id           Int      @id @default(autoincrement())
+  id           Int    @id @default(autoincrement())
   name         String
   costPrice    Int
   shippingCost Int
   stock        Int
 
-  sku          String?
-  brand        String?
-  barcode      String?
-  modelNo      String?
-  description  String?
-  salePrice    Int?
+  sku         String?
+  brand       String?
+  barcode     String?
+  modelNo     String?
+  description String?
+  salePrice   Int?
 
   manufacturer        String?
   origin              String?
@@ -43,10 +43,74 @@ model Product {
   autoPricingEnabled Boolean  @default(false)
   targetMarginRate   Decimal? @db.Decimal(5, 2)
 
-  images       ProductImage[]
+  images              ProductImage[]
+  coupangSetting      CoupangProductSetting?
+  marketplaceProducts MarketplaceProduct[]
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CoupangProductSetting {
+  id                        Int      @id @default(autoincrement())
+  productId                 Int      @unique
+  displayCategoryCode       String?
+  brandId                   String?
+  vendorUserId              String?
+  deliveryMethod            String   @default("SEQUENCIAL")
+  deliveryCompanyCode       String?
+  deliveryChargeType        String   @default("FREE")
+  deliveryCharge            Int      @default(0)
+  freeShipOverAmount        Int      @default(0)
+  deliveryChargeOnReturn    Int?
+  remoteAreaDeliverable     String   @default("N")
+  unionDeliveryType         String   @default("UNION_DELIVERY")
+  returnCenterCode          String?
+  returnChargeName          String?
+  companyContactNumber      String?
+  returnZipCode             String?
+  returnAddress             String?
+  returnAddressDetail       String?
+  returnCharge              Int?
+  outboundShippingPlaceCode String?
+  outboundShippingTimeDay   Int      @default(1)
+  maximumBuyForPerson       Int      @default(0)
+  maximumBuyForPersonPeriod Int      @default(1)
+  unitCount                 Int      @default(1)
+  adultOnly                 String   @default("EVERYONE")
+  taxType                   String   @default("TAX")
+  parallelImported          String   @default("NOT_PARALLEL_IMPORTED")
+  overseasPurchased         String   @default("NOT_OVERSEAS_PURCHASED")
+  pccNeeded                 Boolean  @default(false)
+  emptyBarcodeReason        String?
+  attributes                Json?
+  notices                   Json?
+  certifications            Json?
+  requiredDocuments         Json?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model MarketplaceProduct {
+  id                   Int         @id @default(autoincrement())
+  productId            Int
+  marketplace          Marketplace
+  marketplaceProductId String?
+  marketplaceItemId    String?
+  salePrice            Int?
+  stock                Int?
+  status               String      @default("READY")
+  lastErrorCode        String?
+  lastErrorMessage     String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, marketplace])
+  @@index([marketplace, status])
 }
 
 model ProductImage {
@@ -54,6 +118,7 @@ model ProductImage {
   productId Int
   imageUrl  String
   sortOrder Int      @default(0)
+  isPrimary Boolean  @default(false)
   createdAt DateTime @default(now())
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)

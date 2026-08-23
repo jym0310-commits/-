@@ -5,6 +5,8 @@ import {
   calculateMarketplaceProfitability,
   PricingResult,
 } from "@/lib/pricing/calculator";
+import { CoupangRegistrationPanel } from "@/components/coupang/CoupangRegistrationPanel";
+import { MarketplaceChannelPanel } from "@/components/marketplaces/MarketplaceChannelPanel";
 
 const marketplaces = [
   { code: "COUPANG", label: "쿠팡" },
@@ -50,6 +52,16 @@ type Product = {
   updatedAt: string;
   autoPricingEnabled: boolean;
   targetMarginRate: string | number | null;
+  images: ProductImage[];
+};
+
+type ProductImage = {
+  id: number;
+  productId: number;
+  imageUrl: string;
+  sortOrder: number;
+  isPrimary: boolean;
+  createdAt: string;
 };
 
 type ProductForm = {
@@ -164,6 +176,10 @@ export default function Home() {
   const [isFeeLoading, setIsFeeLoading] = useState(true);
   const [isFeeSaving, setIsFeeSaving] = useState(false);
   const [feeErrorMessage, setFeeErrorMessage] = useState("");
+  const [images, setImages] = useState<ProductImage[]>([]);
+  const [imageUrl, setImageUrl] = useState("");
+  const [imageErrorMessage, setImageErrorMessage] = useState("");
+  const [isImageSaving, setIsImageSaving] = useState(false);
 
   async function loadProducts() {
     setIsLoading(true);
@@ -307,6 +323,7 @@ export default function Home() {
       }
 
       setForm(productToForm(data));
+      setImages(data.images ?? []);
       setEditingProductId(productId);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
@@ -321,8 +338,120 @@ export default function Home() {
   function handleCancelEdit() {
     setEditingProductId(null);
     setForm(emptyForm);
+    setImages([]);
+    setImageUrl("");
+    setImageErrorMessage("");
     setErrorMessage("");
     setSuccessMessage("");
+  }
+
+  async function addImageUrl() {
+    if (editingProductId === null) {
+      setImageErrorMessage("상품을 먼저 저장한 후 이미지를 추가해주세요.");
+      return;
+    }
+
+    if (!imageUrl.trim()) {
+      setImageErrorMessage("이미지 URL을 입력해주세요.");
+      return;
+    }
+
+    await addImage({ imageUrl: imageUrl.trim() });
+    setImageUrl("");
+  }
+
+  async function uploadImage(file: File) {
+    if (editingProductId === null) {
+      setImageErrorMessage("상품을 먼저 저장한 후 이미지를 추가해주세요.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    await addImage(formData);
+  }
+
+  async function addImage(body: FormData | { imageUrl: string }) {
+    if (editingProductId === null) {
+      return;
+    }
+
+    setIsImageSaving(true);
+    setImageErrorMessage("");
+
+    try {
+      const response = await fetch(`/api/products/${editingProductId}/images`, {
+        method: "POST",
+        headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" },
+        body: body instanceof FormData ? body : JSON.stringify(body),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "이미지를 추가하지 못했습니다.");
+      }
+
+      setImages((currentImages) => [...currentImages, data]);
+    } catch (error) {
+      setImageErrorMessage(
+        error instanceof Error ? error.message : "이미지를 추가하지 못했습니다.",
+      );
+    } finally {
+      setIsImageSaving(false);
+    }
+  }
+
+  async function updateImage(imageId: number, body: { isPrimary: true } | { direction: "up" | "down" }) {
+    if (editingProductId === null) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/products/${editingProductId}/images/${imageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "이미지를 변경하지 못했습니다.");
+      }
+
+      const refreshedResponse = await fetch(`/api/products/${editingProductId}/images`);
+      setImages(await refreshedResponse.json());
+    } catch (error) {
+      setImageErrorMessage(
+        error instanceof Error ? error.message : "이미지를 변경하지 못했습니다.",
+      );
+    }
+  }
+
+  async function deleteImage(imageId: number) {
+    if (editingProductId === null) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/products/${editingProductId}/images/${imageId}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "이미지를 삭제하지 못했습니다.");
+      }
+
+      setImages((currentImages) => currentImages.filter((image) => image.id !== imageId));
+      if (data.deleted) {
+        const refreshedResponse = await fetch(`/api/products/${editingProductId}/images`);
+        setImages(await refreshedResponse.json());
+      }
+    } catch (error) {
+      setImageErrorMessage(
+        error instanceof Error ? error.message : "이미지를 삭제하지 못했습니다.",
+      );
+    }
   }
 
   function validateForm() {
@@ -576,6 +705,54 @@ export default function Home() {
                 ? "필수 항목을 입력한 후 저장해주세요."
                 : `상품 ID ${editingProductId}의 정보를 확인하고 수정해주세요.`}
             </p>
+          </div>
+
+          <div className="mb-8 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-base font-semibold text-slate-950">상품 이미지</h3>
+            {editingProductId === null ? (
+              <p className="mt-2 text-sm text-slate-500">
+                상품을 먼저 저장한 후 이미지를 추가할 수 있습니다.
+              </p>
+            ) : (
+              <>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {images.length === 0 ? (
+                    <div className="flex h-32 w-32 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xs text-slate-400">
+                      이미지 없음
+                    </div>
+                  ) : (
+                    images.map((image, index) => (
+                      <div key={image.id} className="relative w-32 rounded-lg border border-slate-200 bg-white p-2">
+                        <img src={image.imageUrl} alt={`${form.name} 이미지 ${index + 1}`} className="h-28 w-full rounded object-cover" />
+                        {image.isPrimary && (
+                          <span className="absolute left-3 top-3 rounded bg-blue-700 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                            대표
+                          </span>
+                        )}
+                        <div className="mt-2 grid grid-cols-2 gap-1">
+                          <button type="button" onClick={() => void updateImage(image.id, { direction: "up" })} className="rounded border border-slate-200 py-1 text-xs text-slate-600 hover:bg-slate-50" aria-label="이미지 위로 이동">↑</button>
+                          <button type="button" onClick={() => void updateImage(image.id, { direction: "down" })} className="rounded border border-slate-200 py-1 text-xs text-slate-600 hover:bg-slate-50" aria-label="이미지 아래로 이동">↓</button>
+                          <button type="button" onClick={() => void updateImage(image.id, { isPrimary: true })} className="col-span-2 rounded border border-blue-200 py-1 text-xs text-blue-700 hover:bg-blue-50">대표 지정</button>
+                          <button type="button" onClick={() => void deleteImage(image.id)} className="col-span-2 rounded border border-red-200 py-1 text-xs text-red-700 hover:bg-red-50">삭제</button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label className="flex-1 space-y-1">
+                    <span className="text-xs font-medium text-slate-600">이미지 URL 추가</span>
+                    <input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} placeholder="https://" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" />
+                  </label>
+                  <button type="button" onClick={() => void addImageUrl()} disabled={isImageSaving} className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50">URL 추가</button>
+                  <label className="cursor-pointer rounded-lg border border-slate-300 bg-white px-4 py-2 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                    파일 선택
+                    <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file); event.target.value = ""; }} />
+                  </label>
+                </div>
+                {imageErrorMessage && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{imageErrorMessage}</p>}
+              </>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-8">
@@ -855,6 +1032,15 @@ export default function Home() {
               </button>
             )}
           </form>
+
+          {editingProductId !== null && (
+            <>
+              <MarketplaceChannelPanel productId={editingProductId} />
+              <div id="coupang-registration" className="scroll-mt-6">
+                <CoupangRegistrationPanel productId={editingProductId} />
+              </div>
+            </>
+          )}
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -875,6 +1061,7 @@ export default function Home() {
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-5 py-3 font-semibold">ID</th>
+                  <th className="px-5 py-3 font-semibold">대표 이미지</th>
                   <th className="px-5 py-3 font-semibold">상품명</th>
                   <th className="px-5 py-3 font-semibold">SKU</th>
                   <th className="px-5 py-3 font-semibold">브랜드</th>
@@ -889,13 +1076,13 @@ export default function Home() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={10} className="px-5 py-10 text-center text-slate-500">
+                    <td colSpan={11} className="px-5 py-10 text-center text-slate-500">
                       상품 목록을 불러오는 중입니다.
                     </td>
                   </tr>
                 ) : products.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-5 py-10 text-center text-slate-500">
+                    <td colSpan={11} className="px-5 py-10 text-center text-slate-500">
                       등록된 상품이 없습니다.
                     </td>
                   </tr>
@@ -903,6 +1090,13 @@ export default function Home() {
                   products.map((product) => (
                     <tr key={product.id} className="text-slate-700">
                       <td className="whitespace-nowrap px-5 py-4">{product.id}</td>
+                      <td className="px-5 py-4">
+                        {product.images?.[0] ? (
+                          <img src={product.images[0].imageUrl} alt={`${product.name} 대표 이미지`} className="h-12 w-12 rounded object-cover" />
+                        ) : (
+                          <span className="text-xs text-slate-400">이미지 없음</span>
+                        )}
+                      </td>
                       <td className="max-w-56 px-5 py-4 font-medium text-slate-950">
                         <span className="block truncate">{product.name}</span>
                       </td>

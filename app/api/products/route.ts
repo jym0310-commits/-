@@ -36,6 +36,12 @@ export async function GET() {
   try {
     const products = await prisma.product.findMany({
       orderBy: { createdAt: "desc" },
+      include: {
+        images: {
+          orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
+          take: 1,
+        },
+      },
     });
 
     return NextResponse.json(products, { status: 200 });
